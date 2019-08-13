@@ -157,29 +157,7 @@ func dumpSpec(adminref *sarama.ClusterAdmin) {
         panic(err)
     }
 
-    /*
-    r := sarama.Resource{ResourceType: sarama.AclResourceTopic, ResourceName: "Hello", ResourcePatternType: sarama.AclPatternLiteral}
-    a := sarama.Acl{Principal: "User:test", Host: "*", Operation: sarama.AclOperationRead, PermissionType: sarama.AclPermissionAllow}
-    err = admin.CreateACL(r, a)
-    if err != nil {
-        panic(err)
-    }
-    */
-
-    /*
-    filter := sarama.AclFilter{
-        Version: 1,
-        ResourceType: sarama.AclResourceAny,
-        Operation:    sarama.AclOperationAny,
-        ResourcePatternTypeFilter: sarama.AclPatternAny,
-        PermissionType: sarama.AclPermissionAny,
-    }
-
-    currentAcls, err := admin.ListAcls(filter)
-    if err != nil {
-        panic(err)
-    }
-    */
+    // Get current ACLs from broker
     currentAcls := listAllAcls(&admin)
 
     var spec Spec
@@ -255,7 +233,6 @@ func (r Resource) Equals(res Resource) bool {
 }
 
 func (o OperationHost) Operation() sarama.AclOperation {
-    //s := strings.Split(string(o), ":")
     return aclOperationFromString(o.OperationName())
 }
 
@@ -346,9 +323,7 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
             }
 
             // Check the partitions count 
-            //fmt.Printf("\nPartitions: %+v\n", currentTopic)
             if int32(topic.Partitions) != currentTopic.NumPartitions {
-                //fmt.Printf("\nPartitions: %v, need %v\n", currentTopic.NumPartitions, topic.Partitions)
                 err := alterNumPartitions(topic.Name, &admin, topic.Partitions)
                 if err != nil {
                     printResult(Error, broker, err.Error(), topic)
@@ -404,57 +379,42 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
     currentAcls := listAllAcls(&admin)
 
     // Iterate over ACLs
-        /*
-    r := sarama.Resource{ResourceType: sarama.AclResourceTopic, ResourceName: "Hello", ResourcePatternType: sarama.AclPatternLiteral}
-    a := sarama.Acl{Principal: "User:test", Host: "*", Operation: sarama.AclOperationRead, PermissionType: sarama.AclPermissionAllow}
-    err = admin.CreateACL(r, a)
-    if err != nil {
-        panic(err)
-    }
-    */
+    breakLoop := false
     for _, acl := range spec.Acls {
         principal := acl.Principal
         for _, permission := range acl.Permissions {
             resource := permission.Resource
-            for _, allow := range permission.Allow {
-                oh := OperationHost(allow)
-                fmt.Printf("TASK [ACL : Create ACL (ALLOW %s@%s to %s %s:%s:%s)] %s\n",
-                     principal, oh.Host(), oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, strings.Repeat("*", 25))
-                if aclExists(&currentAcls, sarama.AclPermissionAllow, principal, oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, oh.Host()) {
-                    printResult(Ok, broker, "", nil)
-                    numOk++
+            for i, rule := range append(permission.Allow,permission.Deny...) {
+                var permissionType sarama.AclPermissionType
+                if i < len(permission.Allow) {
+                    permissionType = sarama.AclPermissionAllow
                 } else {
-                    r := sarama.Resource{
-                        ResourceType: aclResourceTypeFromString(resource.Type),
-                        ResourceName: resource.Pattern,
-                        ResourcePatternType: aclResourcePatternTypeFromString(resource.PatternType),
+                    permissionType = sarama.AclPermissionDeny
+                }
+                result, err := createAclIfNotExists(&admin, &currentAcls, permissionType, principal, resource, OperationHost(rule))
+                if result == Ok {
+                    printResult(Ok, broker, "", acl)
+                    numOk++
+                } else if err != nil {
+                    printResult(Error, broker, err.Error(), acl)
+                    numError++
+                    if errorStop {
+                        breakLoop = true
+                        break
                     }
-                    a := sarama.Acl{
-                        Principal: principal,
-                        Host: oh.Host(),
-                        Operation: aclOperationFromString(oh.OperationName()),
-                        PermissionType: sarama.AclPermissionAllow,
-                    }
-                    err = admin.CreateACL(r, a)
-                    if err != nil {
-                        printResult(Error, broker, err.Error(), acl)
-                        numError++
-                        if errorStop {
-                            break
-                            // TODO : break from all loops
-                        } else {
-                            continue
-                        }
-                    }
-                    printResult(Changed, broker, "", acl)
+                } else {
+                    printResult(result, broker, "", acl)
                     numChanged++
                 }
             }
+            if breakLoop {
+                break
+            }
+        }
+        if breakLoop {
+            break
         }
     }
-
-    //for _, resourceAcls := range currentAcls {
-    //    for _, currentAcl := range resourceAcls.Acls {
 
     printSummary(broker, numOk, numChanged, numError)
     if numError > 0 {
@@ -462,11 +422,31 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
     }
 }
 
+func createAclIfNotExists(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal string, resource Resource, oh OperationHost) (string, error){
+    fmt.Printf("TASK [ACL : Create ACL (%s %s@%s to %s %s:%s:%s)] %s\n",
+        aclPermissionTypeToString(p), principal, oh.Host(), oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, strings.Repeat("*", 25))
+    if aclExists(acls, p, principal, oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, oh.Host()) {
+        return Ok, nil
+    } else {
+        r := sarama.Resource{
+            ResourceType: aclResourceTypeFromString(resource.Type),
+            ResourceName: resource.Pattern,
+            ResourcePatternType: aclResourcePatternTypeFromString(resource.PatternType),
+        }
+        a := sarama.Acl{
+            Principal: principal,
+            Host: oh.Host(),
+            Operation: aclOperationFromString(oh.OperationName()),
+            PermissionType: p,
+        }
+        err := (*admin).CreateACL(r, a)
+        return Changed, err
+    }
+}
+
 func aclExists(a *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal string, operation string, resource string, patternType string, pattern string, host string) bool {
     for _, resourceAcls := range *a {
         for _, currentAcl := range resourceAcls.Acls {
-            //fmt.Printf("Compare %s=%s %s=%s %s=%s\n", principal, currentAcl.Principal, operation, aclOperationToString(currentAcl.Operation), resource, aclResourceTypeToString(resourceAcls.Resource.ResourceType) )
-            //fmt.Printf("Compare %s=%s %s=%s %s=%s\n", patternType, aclResourcePatternTypeToString(resourceAcls.Resource.ResourcePatternType), pattern, resourceAcls.Resource.ResourceName, host, currentAcl.Host)
             if principal == currentAcl.Principal &&
                strings.ToUpper(operation) == aclOperationToString(currentAcl.Operation) &&
                strings.ToLower(resource) == aclResourceTypeToString(resourceAcls.Resource.ResourceType) &&
@@ -718,6 +698,19 @@ func aclResourceTypeFromString(resourceType string) sarama.AclResourceType {
         return sarama.AclResourceTransactionalID
     default:
         return  sarama.AclResourceUnknown
+    }
+}
+
+func aclPermissionTypeToString(permissionType sarama.AclPermissionType) string {
+    switch permissionType {
+    case sarama.AclPermissionAny:
+        return "ANY"
+    case sarama.AclPermissionDeny:
+        return "DENY"
+    case sarama.AclPermissionAllow:
+        return "ALLOW"
+    default:
+        return "INVALID"
     }
 }
 
