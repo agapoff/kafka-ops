@@ -11,6 +11,7 @@ import (
     "io/ioutil"
     "gopkg.in/yaml.v2"
     "encoding/json"
+    "errors"
 )
 
 var (
@@ -25,6 +26,7 @@ var (
     isJSON      bool
     actionApply bool
     actionDump  bool
+    actionHelp  bool
     errorStop   bool
 )
 
@@ -59,6 +61,8 @@ type Resource struct {
 
 type OperationHost string
 
+type Exit struct { Code int }
+
 const (
     Ok      = "\033[0;32m"
     Changed = "\033[0;33m"
@@ -75,20 +79,27 @@ func init() {
     flag.StringVar(&password, "password", "", "Password for authentication (can be also set by Env variable KAFKA_PASSWORD")
     flag.BoolVar(&actionApply, "apply", false, "Apply spec-file to the broker, create all entities that do not exist there; this is the default action")
     flag.BoolVar(&actionDump, "dump", false, "Dump broker entities in YAML (default) or JSON format to stdout or to a file if --spec option is defined")
+    flag.BoolVar(&actionHelp, "help", false, "Print usage")
     flag.BoolVar(&isYAML, "yaml", false, "Spec-file is in YAML format (will try to detect format if none of --yaml or --json is set)")
     flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
     flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
     flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+    flag.Usage = func() {
+        usage()
+    }
     flag.Parse()
 
-    if !actionApply && !actionDump {
-        actionApply = true
+    if !actionApply && !actionDump && !actionHelp {
+        fmt.Println("Please define one of the actions: --dump, --apply, --help")
+        os.Exit(1)
     }
     if actionApply && actionDump {
-        panic("Please define one of the actions: --dump, --apply")
+        fmt.Println("Please define one of the actions: --dump, --apply. Refer to kafka-ops --help for details")
+        os.Exit(1)
     }
     if isJSON && isYAML {
-        panic("Please define one of the formats: --json, --yaml")
+        fmt.Println("Please define one of the formats: --json, --yaml")
+        os.Exit(1)
     }
     if broker == "" {
         broker = loadEnvVar("KAFKA_BROKER")
@@ -99,7 +110,8 @@ func init() {
     if specfile == "" {
         specfile = loadEnvVar("KAFKA_SPEC_FILE")
         if specfile == "" && actionApply {
-            panic("Please define spec file with --spec option or with KAFKA_SPEC_FILE env variable")
+            fmt.Println("Please define spec file with --spec option or with KAFKA_SPEC_FILE env variable")
+            os.Exit(1)
         }
     }
     protocol = strings.ToLower(protocol)
@@ -115,6 +127,7 @@ func init() {
 }
 
 func main() {
+    defer handleExit()
     // Connect to Kafka broker
     brokerAddrs := strings.Split(broker, ",")
     config := sarama.NewConfig()
@@ -131,34 +144,60 @@ func main() {
             config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
             config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &client.XDGSCRAMClient{HashGeneratorFcn: client.SHA512} }
         } else {
-            panic("The only supported SASL mechanisms: scram-sha-256, scram-sha-512")
+            fmt.Println("The only supported SASL mechanisms: scram-sha-256, scram-sha-512")
+            os.Exit(1)
         }
     }
 
     admin, err := sarama.NewClusterAdmin(brokerAddrs, config)
     if err != nil {
-        panic("Error while creating cluster admin: " + err.Error())
+        fmt.Println("Error while creating cluster admin: " + err.Error())
+        os.Exit(2)
     }
     defer func() { _ = admin.Close() }()
-
+    //defer fmt.Println("closed")
     if actionApply {
-        applySpecFile(&admin)
+        err = applySpecFile(&admin)
+        if err != nil {
+            if err.Error() != "" {
+                fmt.Println(err.Error())
+            }
+            panic(Exit{2})
+        }
     } else if actionDump {
-        dumpSpec(&admin)
+        err = dumpSpec(&admin)
+        if err != nil {
+            if err.Error() != "" {
+                fmt.Println(err.Error())
+            }
+            panic(Exit{2})
+        }
+    } else if actionHelp {
+        usage()
     }
 }
 
-func dumpSpec(adminref *sarama.ClusterAdmin) {
-    admin := *adminref
+func handleExit() {
+    if e := recover(); e != nil {
+        if exit, ok := e.(Exit); ok == true {
+            os.Exit(exit.Code)
+        }
+        panic(e)
+    }
+}
 
+func dumpSpec(admin *sarama.ClusterAdmin) error {
     // Get current topics from broker
-    currentTopics, err := admin.ListTopics()
+    currentTopics, err := (*admin).ListTopics()
     if err != nil {
-        panic(err)
+        return err
     }
 
     // Get current ACLs from broker
-    currentAcls := listAllAcls(&admin)
+    currentAcls,err := listAllAcls(admin)
+    if err != nil {
+        return err
+    }
 
     var spec Spec
 
@@ -209,6 +248,7 @@ func dumpSpec(adminref *sarama.ClusterAdmin) {
         yamlTopic,_ := yaml.Marshal(spec)
         fmt.Printf(string(yamlTopic))
     }
+    return nil
 }
 
 func (s *Spec) AddAcl(acl Acl) {
@@ -244,7 +284,7 @@ func (o OperationHost) Host() string {
     return strings.Split(string(o), ":")[1]
 }
 
-func listAllAcls(adminref *sarama.ClusterAdmin) []sarama.ResourceAcls {
+func listAllAcls(admin *sarama.ClusterAdmin) ([]sarama.ResourceAcls,error) {
     filter := sarama.AclFilter{
         Version: 1,
         ResourceType: sarama.AclResourceAny,
@@ -253,24 +293,25 @@ func listAllAcls(adminref *sarama.ClusterAdmin) []sarama.ResourceAcls {
         PermissionType: sarama.AclPermissionAny,
     }
 
-    currentAcls, err := (*adminref).ListAcls(filter)
+    currentAcls, err := (*admin).ListAcls(filter)
     if err != nil {
-        panic(err)
+        return nil, err
     }
-    return currentAcls
+    return currentAcls, nil
 }
 
-func applySpecFile(adminref *sarama.ClusterAdmin) {
-    admin := *adminref
-
+func applySpecFile(admin *sarama.ClusterAdmin) error {
     var numOk, numChanged, numError int
 
-    spec := parseSpecFile()
+    spec, err := parseSpecFile()
+    if err != nil {
+        return errors.New("Can't parse spec manifest: " + err.Error())
+    }
 
     // Get number of brokers
-    brokers, _, err := admin.DescribeCluster()
+    brokers, _, err := (*admin).DescribeCluster()
     if err != nil {
-        panic(err)
+        return errors.New("Can't get number of brokers: " + err.Error())
     }
     var autoReplicationFactor int
     if len(brokers) > 1 {
@@ -280,9 +321,9 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
     }
 
     // Get current topics from broker
-    currentTopics, err := admin.ListTopics()
+    currentTopics, err := (*admin).ListTopics()
     if err != nil {
-        panic(err)
+        return errors.New("Can't list topics: " + err.Error())
     }
 
     // Iterate over topics
@@ -295,7 +336,7 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
 
         if !found {
             // Topic doesn't exist - need to create one
-            err := createTopic(topic, &admin)
+            err := createTopic(topic, admin)
             if err != nil {
                 printResult(Error, broker, err.Error(), topic)
                 numError++
@@ -324,7 +365,7 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
 
             // Check the partitions count 
             if int32(topic.Partitions) != currentTopic.NumPartitions {
-                err := alterNumPartitions(topic.Name, &admin, topic.Partitions)
+                err := alterNumPartitions(topic.Name, admin, topic.Partitions)
                 if err != nil {
                     printResult(Error, broker, err.Error(), topic)
                     numError++
@@ -352,7 +393,7 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
                 }
             }
             if topicConfigAlterNeeded {
-                topic,err = alterTopicConfig(topic, &admin, currentTopic.ConfigEntries)
+                topic,err = alterTopicConfig(topic, admin, currentTopic.ConfigEntries)
                 if err != nil {
                     printResult(Error, broker, err.Error(), topic)
                     numError++
@@ -376,7 +417,10 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
     }
 
     // Get current ACLs from broker
-    currentAcls := listAllAcls(&admin)
+    currentAcls,err := listAllAcls(admin)
+    if err != nil {
+        return err
+    }
 
     // Iterate over ACLs
     breakLoop := false
@@ -391,7 +435,7 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
                 } else {
                     permissionType = sarama.AclPermissionDeny
                 }
-                result, err := createAclIfNotExists(&admin, &currentAcls, permissionType, principal, resource, OperationHost(rule))
+                result, err := createAclIfNotExists(admin, &currentAcls, permissionType, principal, resource, OperationHost(rule))
                 if result == Ok {
                     printResult(Ok, broker, "", acl)
                     numOk++
@@ -418,8 +462,9 @@ func applySpecFile(adminref *sarama.ClusterAdmin) {
 
     printSummary(broker, numOk, numChanged, numError)
     if numError > 0 {
-        os.Exit(2)
+        return errors.New("")
     }
+    return nil
 }
 
 func createAclIfNotExists(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal string, resource Resource, oh OperationHost) (string, error){
@@ -461,33 +506,24 @@ func aclExists(a *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal s
     return false
 }
 
-func parseSpecFile() Spec {
+func parseSpecFile() (Spec,error) {
+    var spec Spec
     specFile, err := ioutil.ReadFile(specfile)
     if err != nil {
-        panic(err)
+        return spec, err
     }
 
-    var spec Spec
     if (isYAML) {
         err = yaml.Unmarshal(specFile, &spec)
-        if err != nil {
-            panic(err)
-        }
     } else if (isJSON) {
         err = json.Unmarshal(specFile, &spec)
-        if err != nil {
-            panic(err)
-        }
     } else {
         err = yaml.Unmarshal(specFile, &spec)
         if err != nil {
             err = json.Unmarshal(specFile, &spec)
-            if err != nil {
-                panic(err)
-            }
         }
     }
-    return spec
+    return spec, err
 }
 
 func alterNumPartitions(topic string, clusterAdmin *sarama.ClusterAdmin, count int) error {
@@ -715,7 +751,41 @@ func aclPermissionTypeToString(permissionType sarama.AclPermissionType) string {
 }
 
 func usage() {
-    fmt.Fprintf(os.Stderr, "Usage: %s -b <bootstrap brokers> -s <specfile> [-v]\n", os.Args[0])
-    flag.PrintDefaults()
+    usage := `Manage Kafka cluster resources (topics and ACLs)
+Usage: %s <action> [<options>] [<broker connection options>]
+----------------
+Actions
+--help           Show this help and exit
+--dump           Dump cluster resources and their configs to stdout
+                 See also --json and --yaml options
+--apply          Idempotently align cluster resources with the spec manifest
+                 See also --spec, --json and --yaml options
+----------------
+Options
+--spec           A path to manifest (specification file) to be used
+                 with --apply action
+                 Can be also set by Env variable KAFKA_SPEC_FILE
+--yaml           Spec-file is in YAML format
+                 Will try to detect format if none of --yaml or --json is set
+--json           Spec-file is in JSON format
+                 Will try to detect format if none of --yaml or --json is set
+--verbose        Verbose output
+--stop-on-error  Exit on first occurred error
+----------------
+Broker connection options
+--broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
+                 Can be also set by Env variable KAFKA_BROKER
+--protocol       Security protocol. Default is plaintext
+                 Available options: plaintext, sasl_ssl, sasl_plaintext
+--mechanism      SASL mechanism. Default is scram-sha-256
+                 Available options: scram-sha-256, scram-sha-512
+--username       Username for authentication
+                 Can be also set by Env variable KAFKA_USERNAME
+--password       Password for authentication
+                 Can be also set by Env variable KAFKA_PASSWORD
+`
+
+    fmt.Fprintf(os.Stderr, usage, os.Args[0])
+    //flag.PrintDefaults()
     os.Exit(1)
 }
