@@ -12,6 +12,7 @@ import (
     "gopkg.in/yaml.v2"
     "encoding/json"
     "errors"
+    "crypto/tls"
 )
 
 var (
@@ -147,6 +148,13 @@ func main() {
             fmt.Println("The only supported SASL mechanisms: scram-sha-256, scram-sha-512")
             os.Exit(1)
         }
+    }
+    if strings.HasSuffix(protocol, "_ssl") {
+        config.Net.TLS.Enable = true
+        tlsConfig := tls.Config{
+            InsecureSkipVerify: true,
+        }
+        config.Net.TLS.Config = &tlsConfig
     }
 
     admin, err := sarama.NewClusterAdmin(brokerAddrs, config)
