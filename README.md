@@ -1,6 +1,8 @@
 # kafka-ops
-Yet another CLI utility to automate Kafka cluster management
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/agapoff/kafka-ops/blob/master/LICENSE)
+
+Yet another CLI utility to automate Kafka cluster management
 
 **Kafka-Ops** is a command-line utility written in Go and mostly inspired by [KafkaSpecs](https://github.com/streamthoughts/kafka-specs) java tool. It allows to automate Kafka management by describing resources (topics, ACLs) and their configs in spec-files and applying them to Kafka cluster. Kafka-Ops uses AdminClient Kafka API to align cluster resources with the spec idempotently. The spec can be manifested either in YAML or JSON format.
 
@@ -52,6 +54,7 @@ acls:
 The format is quite evident. Just few remarks:
 * The topic config values are always strings
 * The topic config value can be set to *default*. This will remove the per-topic setting and the topic will be using the cluster default value
+* *replication_factor* for topic is optional. If utility will need to create the topic and this setting will not be defined then it will be set to 1 on single-node clusters and to 2 on multi-node clusters
 * The ACL operation is described as *OperationType:Host*
 
 kafka-cluster-example2.json:
@@ -215,7 +218,7 @@ You need golang and GNU make to be installed.
 make build
 ```
 
-If you have rpm-build installed then you may build RPM-package
+If you have rpm-build installed then you can build RPM-package
 
 ```bash
 make rpm
