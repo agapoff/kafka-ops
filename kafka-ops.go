@@ -129,7 +129,34 @@ func init() {
 
 func main() {
     defer handleExit()
-    // Connect to Kafka broker
+
+    //defer fmt.Println("closed")
+    if actionApply {
+        admin := connectToKafkaCluster()
+        defer func() { _ = (*admin).Close() }()
+        err := applySpecFile(admin)
+        if err != nil {
+            if err.Error() != "" {
+                fmt.Println(err.Error())
+            }
+            panic(Exit{2})
+        }
+    } else if actionDump {
+        admin := connectToKafkaCluster()
+        defer func() { _ = (*admin).Close() }()
+        err := dumpSpec(admin)
+        if err != nil {
+            if err.Error() != "" {
+                fmt.Println(err.Error())
+            }
+            panic(Exit{2})
+        }
+    } else if actionHelp {
+        usage()
+    }
+}
+
+func connectToKafkaCluster() *sarama.ClusterAdmin {
     brokerAddrs := strings.Split(broker, ",")
     config := sarama.NewConfig()
     config.Version = sarama.V2_2_0_0
@@ -162,27 +189,7 @@ func main() {
         fmt.Println("Error while creating cluster admin: " + err.Error())
         os.Exit(2)
     }
-    defer func() { _ = admin.Close() }()
-    //defer fmt.Println("closed")
-    if actionApply {
-        err = applySpecFile(&admin)
-        if err != nil {
-            if err.Error() != "" {
-                fmt.Println(err.Error())
-            }
-            panic(Exit{2})
-        }
-    } else if actionDump {
-        err = dumpSpec(&admin)
-        if err != nil {
-            if err.Error() != "" {
-                fmt.Println(err.Error())
-            }
-            panic(Exit{2})
-        }
-    } else if actionHelp {
-        usage()
-    }
+    return &admin
 }
 
 func handleExit() {
