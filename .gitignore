@@ -4,6 +4,10 @@
 *.dll
 *.so
 *.dylib
+kafka-ops
+
+# RPM
+rpm-build
 
 # Test binary, build with `go test -c`
 *.test
