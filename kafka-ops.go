@@ -41,6 +41,7 @@ type Topic struct {
     Partitions        int               `yaml:"partitions" json:"partitions"`
     ReplicationFactor int               `yaml:"replication_factor" json:"replication_factor"`
     Configs           map[string]string `yaml:"configs" json:"configs"`
+    State             string            `yaml:"state" json:"state"`
 }
 
 type Acl struct {
@@ -129,8 +130,8 @@ func init() {
 
 func main() {
     defer handleExit()
-
     //defer fmt.Println("closed")
+
     if actionApply {
         admin := connectToKafkaCluster()
         defer func() { _ = (*admin).Close() }()
@@ -343,90 +344,91 @@ func applySpecFile(admin *sarama.ClusterAdmin) error {
 
     // Iterate over topics
     for _, topic := range spec.Topics {
-        if topic.ReplicationFactor < 1 {
-            topic.ReplicationFactor = autoReplicationFactor
+        if topic.State == "absent" {
+            fmt.Printf("TASK [TOPIC : Delete topic %s] %s\n", topic.Name, strings.Repeat("*", 52))
+        } else {
+            fmt.Printf("TASK [TOPIC : Create topic %s (partitions=%d, replicas=%d)] %s\n", topic.Name, topic.Partitions, topic.ReplicationFactor, strings.Repeat("*", 25))
         }
-        fmt.Printf("TASK [TOPIC : Create topic %s (partitions=%d, replicas=%d)] %s\n", topic.Name, topic.Partitions, topic.ReplicationFactor, strings.Repeat("*", 25))
         currentTopic, found := currentTopics[topic.Name]
 
         if !found {
-            // Topic doesn't exist - need to create one
-            err := createTopic(topic, admin)
-            if err != nil {
-                printResult(Error, broker, err.Error(), topic)
-                numError++
-                if errorStop {
-                    break
-                } else {
-                    continue
+            // Topic doesn't exist - need to create one or no need to delete
+            if topic.State == "absent" {
+                printResult(Ok, broker, "", topic)
+                numOk++
+            } else {
+                if topic.ReplicationFactor < 1 {
+                    topic.ReplicationFactor = autoReplicationFactor
                 }
+                err := createTopic(topic, admin)
+                if err != nil {
+                    printResult(Error, broker, err.Error(), topic)
+                    numError++
+                    if errorStop { break } else { continue }
+                }
+                printResult(Changed, broker, "", topic)
+                numChanged++
             }
-            printResult(Changed, broker, "", topic)
-            numChanged++
         } else {
             // Topic exists
-            var topicAltered bool = false
-            var topicConfigAlterNeeded = false
-            // Check the replication-factor
-            if int16(topic.ReplicationFactor) != currentTopic.ReplicationFactor {
-                printResult(Error, broker, "Cannot change replication-factor. Consider doing it manually with kafka-reassign-partitions utility or re-creating the topic", topic)
-                numError++
-                if errorStop {
-                    break
-                } else {
-                    continue
-                }
-            }
-
-            // Check the partitions count 
-            if int32(topic.Partitions) != currentTopic.NumPartitions {
-                err := alterNumPartitions(topic.Name, admin, topic.Partitions)
+            if topic.State == "absent" {
+                err := deleteTopic(topic.Name, admin)
                 if err != nil {
                     printResult(Error, broker, err.Error(), topic)
                     numError++
-                    if errorStop {
-                        break
-                    } else {
-                        continue
-                    }
+                    if errorStop { break } else { continue }
                 }
-                topicAltered = true
-            }
-            // Check the configs
-            for key, val := range topic.Configs {
-                currentVal, found := currentTopic.ConfigEntries[key]
-                if found {
-                    if val != *currentVal {
-                        topicConfigAlterNeeded = true
-                        //fmt.Printf("Current %s: %#v New: %#v\n", key, *currentVal, val)
-                        break
-                    }
-                } else if val != "default" {
-                    topicConfigAlterNeeded = true
-                    //fmt.Printf("New %s: %#v\n", key, val)
-                    break
-                }
-            }
-            if topicConfigAlterNeeded {
-                topic,err = alterTopicConfig(topic, admin, currentTopic.ConfigEntries)
-                if err != nil {
-                    printResult(Error, broker, err.Error(), topic)
-                    numError++
-                    if errorStop {
-                        break
-                    } else {
-                        continue
-                    }
-                }
-                topicAltered = true
-            }
-
-            if topicAltered {
                 printResult(Changed, broker, "", topic)
                 numChanged++
             } else {
-                printResult(Ok, broker, "", topic)
-                numOk++
+                var topicAltered bool = false
+                var topicConfigAlterNeeded = false
+                // Check the replication-factor
+                if topic.ReplicationFactor > 0 && int16(topic.ReplicationFactor) != currentTopic.ReplicationFactor {
+                    printResult(Error, broker, "Cannot change replication-factor. Consider doing it manually with kafka-reassign-partitions utility or re-creating the topic", topic)
+                    numError++
+                    if errorStop { break } else { continue }
+                }
+                // Check the partitions count
+                if int32(topic.Partitions) != currentTopic.NumPartitions {
+                    err := alterNumPartitions(topic.Name, admin, topic.Partitions)
+                    if err != nil {
+                        printResult(Error, broker, err.Error(), topic)
+                        numError++
+                        if errorStop { break } else { continue }
+                    }
+                    topicAltered = true
+                }
+                // Check the configs
+                for key, val := range topic.Configs {
+                    currentVal, found := currentTopic.ConfigEntries[key]
+                    if found {
+                        if val != *currentVal {
+                            topicConfigAlterNeeded = true
+                            break
+                        }
+                    } else if val != "default" {
+                        topicConfigAlterNeeded = true
+                        break
+                    }
+                }
+                if topicConfigAlterNeeded {
+                    topic,err = alterTopicConfig(topic, admin, currentTopic.ConfigEntries)
+                    if err != nil {
+                        printResult(Error, broker, err.Error(), topic)
+                        numError++
+                        if errorStop { break } else { continue }
+                    }
+                    topicAltered = true
+                }
+
+                if topicAltered {
+                    printResult(Changed, broker, "", topic)
+                    numChanged++
+                } else {
+                    printResult(Ok, broker, "", topic)
+                    numOk++
+                }
             }
         }
     }
@@ -484,7 +486,7 @@ func applySpecFile(admin *sarama.ClusterAdmin) error {
 
 func createAclIfNotExists(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal string, resource Resource, oh OperationHost) (string, error){
     fmt.Printf("TASK [ACL : Create ACL (%s %s@%s to %s %s:%s:%s)] %s\n",
-        aclPermissionTypeToString(p), principal, oh.Host(), oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, strings.Repeat("*", 25))
+    aclPermissionTypeToString(p), principal, oh.Host(), oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, strings.Repeat("*", 25))
     if aclExists(acls, p, principal, oh.OperationName(), resource.Type, resource.PatternType, resource.Pattern, oh.Host()) {
         return Ok, nil
     } else {
@@ -508,14 +510,14 @@ func aclExists(a *[]sarama.ResourceAcls, p sarama.AclPermissionType, principal s
     for _, resourceAcls := range *a {
         for _, currentAcl := range resourceAcls.Acls {
             if principal == currentAcl.Principal &&
-               strings.ToUpper(operation) == aclOperationToString(currentAcl.Operation) &&
-               strings.ToLower(resource) == aclResourceTypeToString(resourceAcls.Resource.ResourceType) &&
-               strings.ToUpper(patternType) == aclResourcePatternTypeToString(resourceAcls.Resource.ResourcePatternType) &&
-               pattern == resourceAcls.Resource.ResourceName &&
-               host == currentAcl.Host &&
-               p == currentAcl.PermissionType {
-                  return true
-               }
+            strings.ToUpper(operation) == aclOperationToString(currentAcl.Operation) &&
+            strings.ToLower(resource) == aclResourceTypeToString(resourceAcls.Resource.ResourceType) &&
+            strings.ToUpper(patternType) == aclResourcePatternTypeToString(resourceAcls.Resource.ResourcePatternType) &&
+            pattern == resourceAcls.Resource.ResourceName &&
+            host == currentAcl.Host &&
+            p == currentAcl.PermissionType {
+                return true
+            }
         }
     }
     return false
@@ -565,19 +567,23 @@ func alterTopicConfig(topic Topic, clusterAdmin *sarama.ClusterAdmin, currentCon
     return topic, err
 }
 
-func createTopic(topic Topic, clusterAdmin *sarama.ClusterAdmin) error {
-    admin := *clusterAdmin
+func createTopic(topic Topic, admin *sarama.ClusterAdmin) error {
     configEntries := make(map[string]*string)
     for key, val := range topic.Configs {
         if val != "default" {
             configEntries[key] = getPtr(topic.Configs[key])
         }
     }
-    err := admin.CreateTopic(topic.Name, &sarama.TopicDetail{
+    err := (*admin).CreateTopic(topic.Name, &sarama.TopicDetail{
         NumPartitions:     int32(topic.Partitions),
         ReplicationFactor: int16(topic.ReplicationFactor),
         ConfigEntries:     configEntries,
     }, false)
+    return err
+}
+
+func deleteTopic(topic string, admin *sarama.ClusterAdmin) error {
+    err := (*admin).DeleteTopic(topic)
     return err
 }
 
@@ -767,38 +773,38 @@ func aclPermissionTypeToString(permissionType sarama.AclPermissionType) string {
 
 func usage() {
     usage := `Manage Kafka cluster resources (topics and ACLs)
-Usage: %s <action> [<options>] [<broker connection options>]
-----------------
-Actions
---help           Show this help and exit
---dump           Dump cluster resources and their configs to stdout
-                 See also --json and --yaml options
---apply          Idempotently align cluster resources with the spec manifest
-                 See also --spec, --json and --yaml options
-----------------
-Options
---spec           A path to manifest (specification file) to be used
-                 with --apply action
-                 Can be also set by Env variable KAFKA_SPEC_FILE
---yaml           Spec-file is in YAML format
-                 Will try to detect format if none of --yaml or --json is set
---json           Spec-file is in JSON format
-                 Will try to detect format if none of --yaml or --json is set
---verbose        Verbose output
---stop-on-error  Exit on first occurred error
-----------------
-Broker connection options
---broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
-                 Can be also set by Env variable KAFKA_BROKER
---protocol       Security protocol. Default is plaintext
-                 Available options: plaintext, sasl_ssl, sasl_plaintext
---mechanism      SASL mechanism. Default is scram-sha-256
-                 Available options: scram-sha-256, scram-sha-512
---username       Username for authentication
-                 Can be also set by Env variable KAFKA_USERNAME
---password       Password for authentication
-                 Can be also set by Env variable KAFKA_PASSWORD
-`
+    Usage: %s <action> [<options>] [<broker connection options>]
+    ----------------
+    Actions
+    --help           Show this help and exit
+    --dump           Dump cluster resources and their configs to stdout
+    See also --json and --yaml options
+    --apply          Idempotently align cluster resources with the spec manifest
+    See also --spec, --json and --yaml options
+    ----------------
+    Options
+    --spec           A path to manifest (specification file) to be used
+    with --apply action
+    Can be also set by Env variable KAFKA_SPEC_FILE
+    --yaml           Spec-file is in YAML format
+    Will try to detect format if none of --yaml or --json is set
+    --json           Spec-file is in JSON format
+    Will try to detect format if none of --yaml or --json is set
+    --verbose        Verbose output
+    --stop-on-error  Exit on first occurred error
+    ----------------
+    Broker connection options
+    --broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
+    Can be also set by Env variable KAFKA_BROKER
+    --protocol       Security protocol. Default is plaintext
+    Available options: plaintext, sasl_ssl, sasl_plaintext
+    --mechanism      SASL mechanism. Default is scram-sha-256
+    Available options: scram-sha-256, scram-sha-512
+    --username       Username for authentication
+    Can be also set by Env variable KAFKA_USERNAME
+    --password       Password for authentication
+    Can be also set by Env variable KAFKA_PASSWORD
+    `
 
     fmt.Fprintf(os.Stderr, usage, os.Args[0])
     //flag.PrintDefaults()

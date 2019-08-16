@@ -27,14 +27,13 @@ topics:
   name: my-topic1
   partitions: 3
 - name: my-topic2
-  partitions: 3
-  configs:
-    retention.ms: 30000
+  state: absent
 - name: my-topic3
   partitions: 1
   replication_factor: 1
   configs:
       min.insync.replicas: 'default'
+      retention.ms: 30000
 acls:
   - principal: 'User:test1'
     permissions:
@@ -52,9 +51,10 @@ acls:
 ```
 
 The format is quite evident. Just few remarks:
-* The topic config values are always strings
+* The topic config values are always strings, while *partitions* and *replication_factor* are always numeric
 * The topic config value can be set to *default*. This will remove the per-topic setting and the topic will be using the cluster default value
 * *replication_factor* for topic is optional. If utility will need to create the topic and this setting will not be defined then it will be set to 1 on single-node clusters and to 2 on multi-node clusters
+* The parameter *state=absent* can be used for deleting topics if they present. Any value other than *absent* is considered as *present*
 * The ACL operation is described as *OperationType:Host*
 
 kafka-cluster-example2.json:
@@ -124,28 +124,28 @@ kafka-cluster-example2.json:
 output:
 ```
 TASK [TOPIC : Create topic my-topic1 (partitions=3, replicas=1)] ***********************
-ok: [cy-selenium.quotix.io:9092]
+ok: [kafka1.cluster.local:9092]
 
-TASK [TOPIC : Create topic my-topic2 (partitions=3, replicas=1)] ***********************
-ok: [cy-selenium.quotix.io:9092]
+TASK [TOPIC : Delete topic my-topic2 ***************************************************
+ok: [kafka1.cluster.local:9092]
 
 TASK [TOPIC : Create topic my-topic3 (partitions=1, replicas=1)] ***********************
-ok: [cy-selenium.quotix.io:9092]
+ok: [kafka1.cluster.local:9092]
 
 TASK [ACL : Create ACL (ALLOW User:test1@* to READ topic:PREFIXED:my-)] ****************
-changed: [cy-selenium.quotix.io:9092]
+changed: [kafka1.cluster.local:9092]
 
 TASK [ACL : Create ACL (ALLOW User:test1@* to WRITE topic:PREFIXED:my-)] ***************
-changed: [cy-selenium.quotix.io:9092]
+changed: [kafka1.cluster.local:9092]
 
 TASK [ACL : Create ACL (ALLOW User:test1@* to DESCRIBE topic:PREFIXED:my-)] ************
-changed: [cy-selenium.quotix.io:9092]
+changed: [kafka1.cluster.local:9092]
 
 TASK [ACL : Create ACL (ALLOW User:test1@* to READ group:LITERAL:my-group)] ************
-changed: [cy-selenium.quotix.io:9092]
+changed: [kafka1.cluster.local:9092]
 
 TASK [ACL : Create ACL (DENY User:test1@* to DESCRIBE group:LITERAL:my-group)] *********
-changed: [cy-selenium.quotix.io:9092]
+changed: [kafka1.cluster.local:9092]
 
 SUMMARY ********************************************************************************
 
