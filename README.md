@@ -198,7 +198,7 @@ topics:
   partitions: 2
 ```
 
-This spec can by then applied:
+This spec can be then applied:
 
 ```
 Plant=myplant Env=myenv ./kafka-ops --apply --spec kafka-cluster-example3.yaml --template --var Env=realenv --var One=more

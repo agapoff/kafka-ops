@@ -364,7 +364,6 @@ func applySpecFile(admin *sarama.ClusterAdmin) error {
             fmt.Printf("TASK [TOPIC : Delete topic %s] %s\n", topic.Name, strings.Repeat("*", 52))
         } else {
             topic.State = "present"
-            fmt.Printf("TASK [TOPIC : Create topic %s (partitions=%d, replicas=%d)] %s\n", topic.Name, topic.Partitions, topic.ReplicationFactor, strings.Repeat("*", 25))
         }
         currentTopic, found := currentTopics[topic.Name]
 
@@ -377,6 +376,7 @@ func applySpecFile(admin *sarama.ClusterAdmin) error {
                 if topic.ReplicationFactor < 1 {
                     topic.ReplicationFactor = autoReplicationFactor
                 }
+                fmt.Printf("TASK [TOPIC : Create topic %s (partitions=%d, replicas=%d)] %s\n", topic.Name, topic.Partitions, topic.ReplicationFactor, strings.Repeat("*", 25))
                 err := createTopic(topic, admin)
                 if err != nil {
                     printResult(Error, broker, err.Error(), topic)
@@ -401,10 +401,15 @@ func applySpecFile(admin *sarama.ClusterAdmin) error {
                 var topicAltered bool = false
                 var topicConfigAlterNeeded = false
                 // Check the replication-factor
-                if topic.ReplicationFactor > 0 && int16(topic.ReplicationFactor) != currentTopic.ReplicationFactor {
-                    printResult(Error, broker, "Cannot change replication-factor. Consider doing it manually with kafka-reassign-partitions utility or re-creating the topic", topic)
-                    numError++
-                    if errorStop { break } else { continue }
+                if topic.ReplicationFactor > 0 {
+                    fmt.Printf("TASK [TOPIC : Modify topic %s (partitions=%d, replicas=%d)] %s\n", topic.Name, topic.Partitions, topic.ReplicationFactor, strings.Repeat("*", 25))
+                    if int16(topic.ReplicationFactor) != currentTopic.ReplicationFactor {
+                        printResult(Error, broker, "Cannot change replication-factor. Consider doing it manually with kafka-reassign-partitions utility or re-creating the topic", topic)
+                        numError++
+                        if errorStop { break } else { continue }
+                    }
+                } else {
+                    fmt.Printf("TASK [TOPIC : Modify topic %s (partitions=%d)] %s\n", topic.Name, topic.Partitions, strings.Repeat("*", 37))
                 }
                 // Check the partitions count
                 if int32(topic.Partitions) != currentTopic.NumPartitions {
