@@ -48,14 +48,24 @@ acls:
         patternType: 'LITERAL'
       allow_operations: ['READ:*']
       deny_operations: ['DESCRIBE:*']
+  - principal: '*'
+    permissions:
+    - resource:
+        type: 'topic'
+        pattern: 'my-topic'
+        patternType: 'MATCH'
+      allow_operations: ['ANY']
+      state: absent
 ```
 
 The format is quite evident. Just few remarks:
 * The topic config values are always strings, while *partitions* and *replication_factor* are always numeric
 * The topic config value can be set to *default*. This will remove the per-topic setting and the topic will be using the cluster default value
 * *replication_factor* for topic is optional. If utility will need to create the topic and this setting will not be defined then it will be set to 1 on single-node clusters and to 2 on multi-node clusters
-* The parameter *state=absent* can be used for deleting topics if they present. Any value other than *absent* is considered as *present*
+* The parameter *state=absent* can be used for deleting topics and ACLs if they present. Any value other than *absent* is considered as *present*
+* The *patternType=MATCH*, *patternType=ANY*, *operation=ANY*, *principal=&ast;* can be used when *state=absent* for deleting ACLs but be careful with that
 * The ACL operation is described as *OperationType:Host*
+* The Host part can be omitted and will be considered as '*' when *state=present* and as any host (including '*' itself and any separately defined IP) when *state=absent*
 
 kafka-cluster-example2.json:
 ```json
