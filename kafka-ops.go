@@ -32,6 +32,7 @@ var (
     actionHelp  bool
     errorStop   bool
     isTemplate  bool
+    missingOk   bool
     varFlags    arrFlags
 )
 
@@ -100,6 +101,7 @@ func init() {
     flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
     flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
     flag.BoolVar(&isTemplate, "template", false, "Spec-file is a template")
+    flag.BoolVar(&missingOk, "missingok", false, "Ignore missing template keys")
     flag.BoolVar(&verbose, "verbose", false, "Verbose output")
     flag.Var(&varFlags, "var", "Variable for templating")
     flag.Usage = func() {
@@ -604,7 +606,12 @@ func parseSpecFile() (Spec, error) {
     }
 
     if isTemplate {
-        t, err := template.New("").Option("missingkey=error").Parse(string(specFile))
+        t := template.New("")
+        if missingOk {
+            t, err = t.Parse(string(specFile))
+        } else {
+            t, err = t.Option("missingkey=error").Parse(string(specFile))
+        }
         if err != nil {
             return spec, err
         }
@@ -914,6 +921,7 @@ Usage: %s <action> [<options>] [<broker connection options>]
                      Env variables and from --var arguments (--var arguments are
                      taking precedence)
     --var            Variable in format "key=value". Can be presented multiple times
+    --missingok      Do not fail if template key is not defined
     --verbose        Verbose output
     --stop-on-error  Exit on first occurred error
     ----------------

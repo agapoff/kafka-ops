@@ -212,6 +212,14 @@ SUMMARY ************************************************************************
 
 The value defined in command-line argument takes precedence over the one from environment variable.
 
+All go-template functions can be used. Example:
+
+```
+name: my-product.{{ if .Plant }}{{ .Plant }}{{ else }}default{{ end }}.{{ .Env }}.my-topic
+```
+
+But Kafka-Ops fails if some unresolved template key is encountered. In order to override this behaviour use flag *--missingok*.
+
 
 ## Full Usage
 
@@ -239,6 +247,7 @@ Usage: ./kafka-ops <action> [<options>] [<broker connection options>]
                      Env variables and from --var arguments (--var arguments are
                      taking precedence)
     --var            Variable in format "key=value". Can be presented multiple times
+    --missingok      Do not fail if template key is not defined
     --verbose        Verbose output
     --stop-on-error  Exit on first occurred error
     ----------------
