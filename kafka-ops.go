@@ -13,6 +13,8 @@ import (
     "encoding/json"
     "errors"
     "crypto/tls"
+    "text/template"
+    "bytes"
 )
 
 var (
@@ -29,7 +31,11 @@ var (
     actionDump  bool
     actionHelp  bool
     errorStop   bool
+    isTemplate  bool
+    varFlags    arrFlags
 )
+
+type arrFlags []string
 
 type Spec struct {
     Topics []Topic                      `yaml:"topics" json:"topics"`
@@ -93,7 +99,9 @@ func init() {
     flag.BoolVar(&isYAML, "yaml", false, "Spec-file is in YAML format (will try to detect format if none of --yaml or --json is set)")
     flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
     flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
+    flag.BoolVar(&isTemplate, "template", false, "Spec-file is a template")
     flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+    flag.Var(&varFlags, "var", "Variable for templating")
     flag.Usage = func() {
         usage()
     }
@@ -583,11 +591,25 @@ func aclExists(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, acl Sing
     return false
 }
 
-func parseSpecFile() (Spec,error) {
+func parseSpecFile() (Spec, error) {
     var spec Spec
     specFile, err := ioutil.ReadFile(specfile)
     if err != nil {
         return spec, err
+    }
+
+    if isTemplate {
+        t, err := template.New("").Option("missingkey=error").Parse(string(specFile))
+        if err != nil {
+            return spec, err
+        }
+        config := loadEnvMap()
+        var tpl bytes.Buffer
+        err = t.Execute(&tpl, config)
+        if err != nil {
+            return spec, err
+        }
+        specFile = tpl.Bytes()
     }
 
     if (isYAML) {
@@ -688,8 +710,28 @@ func loadEnvVar(key string) string {
     return ""
 }
 
+func loadEnvMap() map[string]string {
+    items := make(map[string]string)
+    for _, item := range append(os.Environ(), varFlags...) {
+        splits := strings.Split(item, "=")
+        key := splits[0]
+        val := strings.Join(splits[1:], "=")
+        items[key] = val
+    }
+    return items
+}
+
 func getPtr(s string) *string {
     return &s
+}
+
+func (f *arrFlags) Set(s string) error {
+    *f = append(*f, s)
+    return nil
+}
+
+func (f *arrFlags) String() string {
+    return "-"
 }
 
 func aclOperationToString(operation sarama.AclOperation) string {
@@ -846,38 +888,42 @@ func aclPermissionTypeFromString(permissionType string) sarama.AclPermissionType
 
 func usage() {
     usage := `Manage Kafka cluster resources (topics and ACLs)
-    Usage: %s <action> [<options>] [<broker connection options>]
+Usage: %s <action> [<options>] [<broker connection options>]
     ----------------
     Actions
     --help           Show this help and exit
     --dump           Dump cluster resources and their configs to stdout
-    See also --json and --yaml options
+                     See also --json and --yaml options
     --apply          Idempotently align cluster resources with the spec manifest
-    See also --spec, --json and --yaml options
+                     See also --spec, --json and --yaml options
     ----------------
     Options
     --spec           A path to manifest (specification file) to be used
-    with --apply action
-    Can be also set by Env variable KAFKA_SPEC_FILE
+                     with --apply action
+                     Can be also set by Env variable KAFKA_SPEC_FILE
     --yaml           Spec-file is in YAML format
-    Will try to detect format if none of --yaml or --json is set
+                     Will try to detect format if none of --yaml or --json is set
     --json           Spec-file is in JSON format
-    Will try to detect format if none of --yaml or --json is set
+                     Will try to detect format if none of --yaml or --json is set
+    --template       Spec-file is a Go-template to be parsed. The values are read from
+                     Env variables and from --var arguments (--var arguments are
+                     taking precedence)
+    --var            Variable in format "key=value". Can be presented multiple times
     --verbose        Verbose output
     --stop-on-error  Exit on first occurred error
     ----------------
     Broker connection options
     --broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
-    Can be also set by Env variable KAFKA_BROKER
+                     Can be also set by Env variable KAFKA_BROKER
     --protocol       Security protocol. Default is plaintext
-    Available options: plaintext, sasl_ssl, sasl_plaintext
+                     Available options: plaintext, sasl_ssl, sasl_plaintext
     --mechanism      SASL mechanism. Default is scram-sha-256
-    Available options: scram-sha-256, scram-sha-512
+                     Available options: scram-sha-256, scram-sha-512
     --username       Username for authentication
-    Can be also set by Env variable KAFKA_USERNAME
+                     Can be also set by Env variable KAFKA_USERNAME
     --password       Password for authentication
-    Can be also set by Env variable KAFKA_PASSWORD
-    `
+                     Can be also set by Env variable KAFKA_PASSWORD
+`
 
     fmt.Fprintf(os.Stderr, usage, os.Args[0])
     //flag.PrintDefaults()

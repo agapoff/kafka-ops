@@ -65,7 +65,7 @@ The format is quite evident. Just few remarks:
 * The parameter *state=absent* can be used for deleting topics and ACLs if they present. Any value other than *absent* is considered as *present*
 * The *patternType=MATCH*, *patternType=ANY*, *operation=ANY*, *principal=&ast;* can be used when *state=absent* for deleting ACLs but be careful with that
 * The ACL operation is described as *OperationType:Host*
-* The Host part can be omitted and will be considered as '*' when *state=present* and as any host (including '*' itself and any separately defined IP) when *state=absent*
+* The Host part can be omitted and will be considered as '&ast;' when *state=present* and as any host (including '&ast;' itself and any separately defined IP) when *state=absent*
 
 kafka-cluster-example2.json:
 ```json
@@ -182,42 +182,77 @@ Kafka-Ops can also export the current topics and ACLs from the cluster. This can
 Note that if no broker is defined then Kafka-Ops tries to connect to *localhost:9092*.
 
 
+## Templating
+
+Kafka-Ops supports the simple templating for Spec-file. For now the variables are only read from environment variables and from command-line arguments.
+
+Templating can be useful for multi-tenant and multi-environment Kafka clusters.
+
+kafka-cluster-example3.yaml
+```yaml
+---
+topics:
+- configs:
+    cleanup.policy: compact
+  name: my-product.{{ .Plant }}.{{ .Env }}.my-topic
+  partitions: 2
+```
+
+This spec can by then applied:
+
+```
+Plant=myplant Env=myenv ./kafka-ops --apply --spec kafka-cluster-example3.yaml --template --var Env=realenv --var One=more
+
+TASK [TOPIC : Create topic my-product.myplant.realenv.my-topic (partitions=2, replicas=1)] ****************
+changed: [cy-selenium.quotix.io:9092] 
+
+SUMMARY ********************************************************************************
+ ok=0    changed=1    failed=0
+```
+
+The value defined in command-line argument takes precedence over the one from environment variable.
+
+
 ## Full Usage
 
 ```
  ./kafka-ops --help
 Manage Kafka cluster resources (topics and ACLs)
 Usage: ./kafka-ops <action> [<options>] [<broker connection options>]
-----------------
-Actions
---help           Show this help and exit
---dump           Dump cluster resources and their configs to stdout
-                 See also --json and --yaml options
---apply          Idempotently align cluster resources with the spec manifest
-                 See also --spec, --json and --yaml options
-----------------
-Options
---spec           A path to manifest (specification file) to be used
-                 with --apply action
-                 Can be also set by Env variable KAFKA_SPEC_FILE
---yaml           Spec-file is in YAML format
-                 Will try to detect format if none of --yaml or --json is set
---json           Spec-file is in JSON format
-                 Will try to detect format if none of --yaml or --json is set
---verbose        Verbose output
---stop-on-error  Exit on first occurred error
-----------------
-Broker connection options
---broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
-                 Can be also set by Env variable KAFKA_BROKER
---protocol       Security protocol. Default is plaintext
-                 Available options: plaintext, sasl_ssl, sasl_plaintext
---mechanism      SASL mechanism. Default is scram-sha-256
-                 Available options: scram-sha-256, scram-sha-512
---username       Username for authentication
-                 Can be also set by Env variable KAFKA_USERNAME
---password       Password for authentication
-                 Can be also set by Env variable KAFKA_PASSWORD
+    ----------------
+    Actions
+    --help           Show this help and exit
+    --dump           Dump cluster resources and their configs to stdout
+                     See also --json and --yaml options
+    --apply          Idempotently align cluster resources with the spec manifest
+                     See also --spec, --json and --yaml options
+    ----------------
+    Options
+    --spec           A path to manifest (specification file) to be used
+                     with --apply action
+                     Can be also set by Env variable KAFKA_SPEC_FILE
+    --yaml           Spec-file is in YAML format
+                     Will try to detect format if none of --yaml or --json is set
+    --json           Spec-file is in JSON format
+                     Will try to detect format if none of --yaml or --json is set
+    --template       Spec-file is a Go-template to be parsed. The values are read from
+                     Env variables and from --var arguments (--var arguments are
+                     taking precedence)
+    --var            Variable in format "key=value". Can be presented multiple times
+    --verbose        Verbose output
+    --stop-on-error  Exit on first occurred error
+    ----------------
+    Broker connection options
+    --broker         Bootstrap-brokers, comma-separated. Default is localhost:9092
+                     Can be also set by Env variable KAFKA_BROKER
+    --protocol       Security protocol. Default is plaintext
+                     Available options: plaintext, sasl_ssl, sasl_plaintext
+    --mechanism      SASL mechanism. Default is scram-sha-256
+                     Available options: scram-sha-256, scram-sha-512
+    --username       Username for authentication
+                     Can be also set by Env variable KAFKA_USERNAME
+    --password       Password for authentication
+                     Can be also set by Env variable KAFKA_PASSWORD
 ```
 
 ## How to build the binary
