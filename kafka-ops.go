@@ -41,6 +41,7 @@ type arrFlags []string
 type Spec struct {
     Topics []Topic                      `yaml:"topics" json:"topics"`
     Acls []Acl                          `yaml:"acls" json:"acls"`
+    Connection                          `yaml:"connection,omitempty" json:"connection,omitempty"`
 }
 
 type Topic struct {
@@ -48,7 +49,7 @@ type Topic struct {
     Partitions        int               `yaml:"partitions" json:"partitions"`
     ReplicationFactor int               `yaml:"replication_factor" json:"replication_factor"`
     Configs           map[string]string `yaml:"configs" json:"configs"`
-    State             string            `yaml:"state" json:"state"`
+    State             string            `yaml:"state,omitempty" json:"state,omitempty"`
 }
 
 type Acl struct {
@@ -60,7 +61,7 @@ type Permission struct {
     Resource                            `yaml:"resource" json:"resource"`
     Allow    []string                   `yaml:"allow_operations,omitempty,flow" json:"allow_operations,omitempty"`
     Deny     []string                   `yaml:"deny_operations,omitempty" json:"deny_operations,omitempty"`
-    State    string                     `yaml:"state" json:"state"`
+    State    string                     `yaml:"state,omitempty" json:"state,omitempty"`
 }
 
 type Resource struct {
@@ -76,6 +77,14 @@ type SingleACL struct {
     Operation      string               `json:"operation"`
     Host           string               `json:"host,omitempty"`
     State          string               `json:"state"`
+}
+
+type Connection struct {
+    Broker    string                    `yaml:"broker,omitempty" json:"broker,omitempty"`
+    Protocol  string                    `yaml:"protocol,omitempty" json:"protocol,omitempty"`
+    Mechanism string                    `yaml:"mechanism,omitempty" json:"mechanism,omitempty"`
+    Username  string                    `yaml:"username,omitempty" json:"username,omitempty"`
+    Password  string                    `yaml:"password,omitempty" json:"password,omitempty"`
 }
 
 type Exit struct { Code int }
@@ -123,7 +132,7 @@ func init() {
     }
     if broker == "" {
         broker = loadEnvVar("KAFKA_BROKER")
-        if broker == "" {
+        if broker == "" && actionDump {
             broker = "localhost:9092"
         }
     }
@@ -151,9 +160,7 @@ func main() {
     //defer fmt.Println("closed")
 
     if actionApply {
-        admin := connectToKafkaCluster()
-        defer func() { _ = (*admin).Close() }()
-        err := applySpecFile(admin)
+        err := applySpecFile()
         if err != nil {
             if err.Error() != "" {
                 fmt.Println(err.Error())
@@ -161,9 +168,7 @@ func main() {
             panic(Exit{2})
         }
     } else if actionDump {
-        admin := connectToKafkaCluster()
-        defer func() { _ = (*admin).Close() }()
-        err := dumpSpec(admin)
+        err := dumpSpec()
         if err != nil {
             if err.Error() != "" {
                 fmt.Println(err.Error())
@@ -220,7 +225,9 @@ func handleExit() {
     }
 }
 
-func dumpSpec(admin *sarama.ClusterAdmin) error {
+func dumpSpec() error {
+    admin := connectToKafkaCluster()
+    defer func() { _ = (*admin).Close() }()
     // Get current topics from broker
     currentTopics, err := (*admin).ListTopics()
     if err != nil {
@@ -334,13 +341,35 @@ func listAllAcls(admin *sarama.ClusterAdmin) ([]sarama.ResourceAcls,error) {
     return currentAcls, nil
 }
 
-func applySpecFile(admin *sarama.ClusterAdmin) error {
+func applySpecFile() error {
     var numOk, numChanged, numError int
 
     spec, err := parseSpecFile()
     if err != nil {
         return errors.New("Can't parse spec manifest: " + err.Error())
     }
+
+    if spec.Connection.Broker != "" {
+        broker = spec.Connection.Broker
+    }
+    if spec.Connection.Protocol != "" {
+        protocol = spec.Connection.Protocol
+    }
+    if spec.Connection.Mechanism != "" {
+        mechanism = spec.Connection.Mechanism
+    }
+    if spec.Connection.Username != "" {
+        username = spec.Connection.Username
+    }
+    if spec.Connection.Password != "" {
+        password = spec.Connection.Password
+    }
+    if broker == "" {
+        broker = "localhost:9092"
+    }
+
+    admin := connectToKafkaCluster()
+    defer func() { _ = (*admin).Close() }()
 
     // Get number of brokers
     brokers, _, err := (*admin).DescribeCluster()

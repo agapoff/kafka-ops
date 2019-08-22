@@ -1,6 +1,6 @@
 .PHONY: rpm clean source
   
-KAFKA_OPS_VERSION ?= 1.0.0
+KAFKA_OPS_VERSION ?= 1.0.1
 BUILD_NUMBER	  ?= 1
 KAFKA_OPS         ?= kafka-ops
 REPO              ?= github.com/agapoff/${KAFKA_OPS}
