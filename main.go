@@ -96,32 +96,6 @@ const (
 	Default = "\033[0m"
 )
 
-func init() {
-	flag.StringVar(&broker, "broker", "", "Bootstrap-brokers, default is localhost:9092 (can be also set by Env variable KAFKA_BROKER)")
-	flag.StringVar(&specfile, "spec", "", "Spec-file (can be set by Env variable KAFKA_SPEC_FILE)")
-	flag.StringVar(&protocol, "protocol", "plaintext", "Security protocol. Available options: plaintext, sasl_ssl, sasl_plaintext (default: plaintext)")
-	flag.StringVar(&mechanism, "mechanism", "scram-sha-256", "SASL mechanism. Available options: scram-sha-256, scram-sha-512 (default: scram-sha-256)")
-	flag.StringVar(&username, "username", "", "Username for authentication (can be also set by Env variable KAFKA_USERNAME")
-	flag.StringVar(&password, "password", "", "Password for authentication (can be also set by Env variable KAFKA_PASSWORD")
-	flag.BoolVar(&actionApply, "apply", false, "Apply spec-file to the broker, create all entities that do not exist there; this is the default action")
-	flag.BoolVar(&actionDump, "dump", false, "Dump broker entities in YAML (default) or JSON format to stdout or to a file if --spec option is defined")
-	flag.BoolVar(&actionHelp, "help", false, "Print usage")
-	flag.BoolVar(&isYAML, "yaml", false, "Spec-file is in YAML format (will try to detect format if none of --yaml or --json is set)")
-	flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
-	flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
-	flag.BoolVar(&isTemplate, "template", false, "Spec-file is a template")
-	flag.BoolVar(&missingOk, "missingok", false, "Ignore missing template keys")
-	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
-	flag.Var(&varFlags, "var", "Variable for templating")
-	flag.Usage = func() {
-		usage()
-	}
-	flag.Parse()
-
-	protocol = strings.ToLower(protocol)
-	mechanism = strings.ToLower(mechanism)
-}
-
 func main() {
 	defer handleExit()
 	//defer fmt.Println("closed")
@@ -767,6 +741,30 @@ func (f *arrFlags) String() string {
 }
 
 func validateFlags() {
+    flag.StringVar(&broker, "broker", "", "Bootstrap-brokers, default is localhost:9092 (can be also set by Env variable KAFKA_BROKER)")
+    flag.StringVar(&specfile, "spec", "", "Spec-file (can be set by Env variable KAFKA_SPEC_FILE)")
+    flag.StringVar(&protocol, "protocol", "plaintext", "Security protocol. Available options: plaintext, sasl_ssl, sasl_plaintext (default: plaintext)")
+    flag.StringVar(&mechanism, "mechanism", "scram-sha-256", "SASL mechanism. Available options: scram-sha-256, scram-sha-512 (default: scram-sha-256)")
+    flag.StringVar(&username, "username", "", "Username for authentication (can be also set by Env variable KAFKA_USERNAME")
+    flag.StringVar(&password, "password", "", "Password for authentication (can be also set by Env variable KAFKA_PASSWORD")
+    flag.BoolVar(&actionApply, "apply", false, "Apply spec-file to the broker, create all entities that do not exist there; this is the default action")
+    flag.BoolVar(&actionDump, "dump", false, "Dump broker entities in YAML (default) or JSON format to stdout or to a file if --spec option is defined")
+    flag.BoolVar(&actionHelp, "help", false, "Print usage")
+    flag.BoolVar(&isYAML, "yaml", false, "Spec-file is in YAML format (will try to detect format if none of --yaml or --json is set)")
+    flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
+    flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
+    flag.BoolVar(&isTemplate, "template", false, "Spec-file is a template")
+    flag.BoolVar(&missingOk, "missingok", false, "Ignore missing template keys")
+    flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+    flag.Var(&varFlags, "var", "Variable for templating")
+    flag.Usage = func() {
+        usage()
+    }
+    flag.Parse()
+
+    protocol = strings.ToLower(protocol)
+    mechanism = strings.ToLower(mechanism)
+
 	if !actionApply && !actionDump && !actionHelp {
 		fmt.Println("Please define one of the actions: --dump, --apply, --help")
 		os.Exit(1)
