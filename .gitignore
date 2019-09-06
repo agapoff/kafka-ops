@@ -5,6 +5,7 @@
 *.so
 *.dylib
 kafka-ops
+*.yaml
 
 # RPM
 rpm-build
