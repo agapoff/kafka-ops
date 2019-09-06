@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/Shopify/sarama"
-	"github.com/agapoff/kafka-ops/client"
 
 	"bytes"
 	"crypto/tls"
@@ -133,10 +132,10 @@ func connectToKafkaCluster() (*sarama.ClusterAdmin, error) {
 		config.Net.SASL.Password = password
 		if mechanism == "scram-sha-256" {
 			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &client.XDGSCRAMClient{HashGeneratorFcn: client.SHA256} }
+			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
 		} else if mechanism == "scram-sha-512" {
 			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &client.XDGSCRAMClient{HashGeneratorFcn: client.SHA512} }
+			config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA512} }
 		} else {
 			return nil, errors.New("The only supported SASL mechanisms: scram-sha-256, scram-sha-512")
 		}
