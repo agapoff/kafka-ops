@@ -1,0 +1,36 @@
+---
+topics:
+- name: my_topic
+  partitions: 1
+- name: my_topic1
+  configs:
+    cleanup.policy: compact
+    compression.type: producer
+    min.insync.replicas: '1'
+    retention.ms: 'default'
+  partitions: 3
+- name: my_topic2
+  partitions: 3
+  configs:
+    retention.ms: 30000
+- name: my_topic3
+  partitions: 1
+  replication_factor: 1
+  configs:
+    min.insync.replicas: 'default'
+- name: my_topic4
+  state: absent
+acls:
+  - principal: 'User:test1'
+    permissions:
+    - resource:
+        type: 'topic'
+        pattern: 'my-'
+        patternType: 'PREFIXED'
+      allow_operations: ['READ:*', 'WRITE:*', 'DESCRIBE:*']
+    - resource:
+        type: 'group'
+        pattern: 'my-group'
+        patternType: 'LITERAL'
+      allow_operations: ['READ:*']
+      deny_operations: ['DESCRIBE:*']

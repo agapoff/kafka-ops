@@ -1,0 +1,14 @@
+topics:
+- name: my_topic
+  partitions: 1
+  replication_factor: 1
+  configs:
+    retention.ms: "5000"
+acls:
+- principal: User:test
+  permissions:
+  - resource:
+      type: any
+      pattern: ""
+      patternType: ANY
+    allow_operations: ['ANY:*']

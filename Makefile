@@ -1,4 +1,4 @@
-.PHONY: rpm clean source
+.PHONY: rpm clean source test
   
 KAFKA_OPS_VERSION ?= 1.0.1
 BUILD_NUMBER	  ?= 1
@@ -18,8 +18,11 @@ clean:
 	@rm -f kafka-ops
 	@rm -rf rpm-build
 
+test:
+	go test -v -cover
+
 build: ${KAFKA_OPS}
 
 ${KAFKA_OPS}:
 	go get ${REPO}
-	go build
+	go build -o ${KAFKA_OPS}

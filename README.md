@@ -269,7 +269,7 @@ Usage: ./kafka-ops <action> [<options>] [<broker connection options>]
 You need golang and GNU make to be installed.
 
 ```bash
-make build
+make test && make build
 ```
 
 If you have rpm-build installed then you can build RPM-package
