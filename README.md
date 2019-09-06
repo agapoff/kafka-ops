@@ -112,11 +112,9 @@ kafka-cluster-example2.json:
                 {
                     "resource": {
                         "type": "cluster",
-                        "pattern": "kafka-cluster",
-                        "patternType": "LITERAL"
                     },
                     "allow_operations": [
-                        "ALL:*"
+                        "IDEMPOTENT_WRITE:*"
                     ]
                 }
             ]

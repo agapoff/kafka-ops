@@ -1,9 +1,9 @@
 package main
 
 import (
-    "github.com/Shopify/sarama"
+	"github.com/Shopify/sarama"
 
-    "strings"
+	"strings"
 )
 
 func aclOperationToString(operation sarama.AclOperation) string {

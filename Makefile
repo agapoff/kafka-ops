@@ -21,6 +21,11 @@ clean:
 test:
 	go test -v -cover
 
+coverage:
+	go test -coverprofile=coverage.out
+	go tool cover -func=coverage.out
+	go tool cover -html=coverage.out
+
 build: ${KAFKA_OPS}
 
 ${KAFKA_OPS}:
