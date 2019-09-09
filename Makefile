@@ -1,4 +1,4 @@
-.PHONY: rpm clean source test
+.PHONY: rpm clean source test coverage
   
 KAFKA_OPS_VERSION ?= 1.0.2
 BUILD_NUMBER	  ?= 1
