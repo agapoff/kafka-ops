@@ -232,6 +232,7 @@ Usage: ./kafka-ops <action> [<options>] [<broker connection options>]
                      See also --json and --yaml options
     --apply          Idempotently align cluster resources with the spec manifest
                      See also --spec, --json and --yaml options
+    --version        Show version
     ----------------
     Options
     --spec           A path to manifest (specification file) to be used

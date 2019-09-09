@@ -16,23 +16,26 @@ import (
 	"text/template"
 )
 
+const version string = "1.0.2"
+
 var (
-	broker      string
-	specfile    string
-	protocol    string
-	mechanism   string
-	username    string
-	password    string
-	verbose     bool
-	isYAML      bool
-	isJSON      bool
-	actionApply bool
-	actionDump  bool
-	actionHelp  bool
-	errorStop   bool
-	isTemplate  bool
-	missingOk   bool
-	varFlags    arrFlags
+	broker        string
+	specfile      string
+	protocol      string
+	mechanism     string
+	username      string
+	password      string
+	verbose       bool
+	isYAML        bool
+	isJSON        bool
+	actionApply   bool
+	actionDump    bool
+	actionHelp    bool
+	actionVersion bool
+	errorStop     bool
+	isTemplate    bool
+	missingOk     bool
+	varFlags      arrFlags
 )
 
 type arrFlags []string
@@ -118,6 +121,8 @@ func main() {
 		}
 	} else if actionHelp {
 		usage()
+	} else if actionVersion {
+		printVersion()
 	}
 }
 
@@ -764,6 +769,7 @@ func validateFlags() {
 	flag.BoolVar(&actionApply, "apply", false, "Apply spec-file to the broker, create all entities that do not exist there; this is the default action")
 	flag.BoolVar(&actionDump, "dump", false, "Dump broker entities in YAML (default) or JSON format to stdout or to a file if --spec option is defined")
 	flag.BoolVar(&actionHelp, "help", false, "Print usage")
+	flag.BoolVar(&actionVersion, "version", false, "Show version")
 	flag.BoolVar(&isYAML, "yaml", false, "Spec-file is in YAML format (will try to detect format if none of --yaml or --json is set)")
 	flag.BoolVar(&isJSON, "json", false, "Spec-file is in JSON format (will try to detect format if none of --yaml or --json is set)")
 	flag.BoolVar(&errorStop, "stop-on-error", false, "Exit on first occurred error")
@@ -779,8 +785,8 @@ func validateFlags() {
 	protocol = strings.ToLower(protocol)
 	mechanism = strings.ToLower(mechanism)
 
-	if !actionApply && !actionDump && !actionHelp {
-		fmt.Println("Please define one of the actions: --dump, --apply, --help")
+	if !actionApply && !actionDump && !actionHelp && !actionVersion {
+		fmt.Println("Please define one of the actions: --dump, --apply, --help, --version")
 		os.Exit(1)
 	}
 	if actionApply && actionDump {
@@ -814,6 +820,11 @@ func validateFlags() {
 	}
 }
 
+func printVersion() error {
+	fmt.Println(version)
+	return nil
+}
+
 func usage() {
 	usage := `Manage Kafka cluster resources (topics and ACLs)
 Usage: %s <action> [<options>] [<broker connection options>]
@@ -824,6 +835,7 @@ Usage: %s <action> [<options>] [<broker connection options>]
                      See also --json and --yaml options
     --apply          Idempotently align cluster resources with the spec manifest
                      See also --spec, --json and --yaml options
+    --version        Show version
     ----------------
     Options
     --spec           A path to manifest (specification file) to be used

@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -223,9 +224,9 @@ func TestApplySpecFileDeleteAcl(t *testing.T) {
 	defer seedBroker.Close()
 
 	seedBroker.SetHandlerByMap(map[string]sarama.MockResponse{
-//        "SaslAuthenticateRequest": sarama.NewMockSaslAuthenticateResponse(t),
-//		"SaslHandshakeRequest": sarama.NewMockSaslHandshakeResponse(t).
-//			SetEnabledMechanisms([]string{sarama.SASLTypeSCRAMSHA256, sarama.SASLTypeSCRAMSHA512}),
+		//"SaslAuthenticateRequest": sarama.NewMockSaslAuthenticateResponse(t),
+		//"SaslHandshakeRequest": sarama.NewMockSaslHandshakeResponse(t).
+		//	SetEnabledMechanisms([]string{sarama.SASLTypeSCRAMSHA256, sarama.SASLTypeSCRAMSHA512}),
 		"MetadataRequest": sarama.NewMockMetadataResponse(t).
 			SetController(seedBroker.BrokerID()).
 			SetBroker(seedBroker.Addr(), seedBroker.BrokerID()),
@@ -266,5 +267,22 @@ func TestGetHost(t *testing.T) {
 
 	if host != "*" {
 		t.Errorf("getHost failed, expected %s, got %s", "*", host)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	out, _ := captureOutput(func() error { return printVersion() })
+	trimOut := strings.TrimSuffix(out, "\n")
+
+	re := regexp.MustCompile(`KAFKA_OPS_VERSION\s*\??=\s*(.+)`)
+	makefile, err := ioutil.ReadFile("Makefile")
+
+	if err != nil {
+		t.Fatal("Failed to read Makefile: " + err.Error())
+	}
+	v := re.FindAllSubmatch(makefile, -1)
+	expected := string(v[0][1])
+	if trimOut != expected {
+		t.Fatalf("Version output %s does not match the expected %s", trimOut, expected)
 	}
 }
