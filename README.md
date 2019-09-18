@@ -1,7 +1,8 @@
 # kafka-ops
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/agapoff/kafka-ops/blob/master/LICENSE)
-(https://goreportcard.com/report/github.com/agapoff/kafka-ops) ![GitHub release](https://img.shields.io/github/release/agapoff/kafka-ops.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cloudworkz/kafka-minion)](https://goreportcard.com/report/github.com/agapoff/kafka-ops)
+![GitHub release](https://img.shields.io/github/release/agapoff/kafka-ops.svg)
 
 Yet another CLI utility to automate Kafka cluster management
 
