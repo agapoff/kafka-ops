@@ -40,12 +40,14 @@ var (
 
 type arrFlags []string
 
+// Spec contains the full structure of the manifest
 type Spec struct {
 	Topics     []Topic    `yaml:"topics" json:"topics"`
 	Acls       []Acl      `yaml:"acls" json:"acls"`
 	Connection Connection `yaml:"connection,omitempty" json:"connection,omitempty"`
 }
 
+// Topic describes single topic
 type Topic struct {
 	Name              string            `yaml:"name" json:"name"`
 	Partitions        int               `yaml:"partitions" json:"partitions"`
@@ -54,11 +56,13 @@ type Topic struct {
 	State             string            `yaml:"state,omitempty" json:"state,omitempty"`
 }
 
+// Acl describes single ACL
 type Acl struct {
 	Principal   string       `yaml:"principal" json:"principal"`
 	Permissions []Permission `yaml:"permissions" json:"permissions"`
 }
 
+// Permission contains all permissions for a single resource (topic, group, cluster)
 type Permission struct {
 	Resource Resource `yaml:"resource" json:"resource"`
 	Allow    []string `yaml:"allow_operations,omitempty,flow" json:"allow_operations,omitempty"`
@@ -66,12 +70,14 @@ type Permission struct {
 	State    string   `yaml:"state,omitempty" json:"state,omitempty"`
 }
 
+// Resource contains the description of the resource (topic, group, cluster)
 type Resource struct {
 	Type        string `yaml:"type" json:"type"`
 	Pattern     string `yaml:"pattern" json:"pattern"`
 	PatternType string `yaml:"patternType" json:"patternType"`
 }
 
+// SingleACL contains one permission for a single resource
 type SingleACL struct {
 	PermissionType string   `json:"permission_type"`
 	Principal      string   `json:"principal"`
@@ -81,6 +87,7 @@ type SingleACL struct {
 	State          string   `json:"state"`
 }
 
+// Connection describes the brokers settings defined in the manifest
 type Connection struct {
 	Broker    string `yaml:"broker,omitempty" json:"broker,omitempty"`
 	Protocol  string `yaml:"protocol,omitempty" json:"protocol,omitempty"`
@@ -89,8 +96,10 @@ type Connection struct {
 	Password  string `yaml:"password,omitempty" json:"password,omitempty"`
 }
 
+// Exit is used for handling panics
 type Exit struct{ Code int }
 
+// The values for coloring the output
 const (
 	Ok      = "\033[0;32m"
 	Changed = "\033[0;33m"
@@ -239,6 +248,7 @@ func dumpSpec() error {
 	return nil
 }
 
+// AddAcl combines permissions with common Resource
 func (s *Spec) AddAcl(acl Acl) {
 	for i, a := range s.Acls {
 		if a.Principal == acl.Principal {
@@ -256,6 +266,7 @@ func (s *Spec) AddAcl(acl Acl) {
 	s.Acls = append(s.Acls, acl)
 }
 
+// Equals compares Resource structs
 func (r Resource) Equals(res Resource) bool {
 	return r.Type == res.Type && r.Pattern == res.Pattern && r.PatternType == res.PatternType
 }
@@ -570,28 +581,27 @@ func alignAcl(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, acl Singl
 		}
 		if len(mAcls) > 0 {
 			return Changed, nil
-		} else {
-			return Ok, nil
 		}
+		return Ok, nil
 	}
 
 	if aclExists(admin, acls, acl) {
 		return Ok, nil
-	} else {
-		r := sarama.Resource{
-			ResourceType:        aclResourceTypeFromString(acl.Resource.Type),
-			ResourceName:        acl.Resource.Pattern,
-			ResourcePatternType: aclResourcePatternTypeFromString(acl.Resource.PatternType),
-		}
-		a := sarama.Acl{
-			Principal:      acl.Principal,
-			Host:           acl.Host,
-			Operation:      aclOperationFromString(acl.Operation),
-			PermissionType: aclPermissionTypeFromString(acl.PermissionType),
-		}
-		err := (*admin).CreateACL(r, a)
-		return Changed, err
 	}
+
+	r := sarama.Resource{
+		ResourceType:        aclResourceTypeFromString(acl.Resource.Type),
+		ResourceName:        acl.Resource.Pattern,
+		ResourcePatternType: aclResourcePatternTypeFromString(acl.Resource.PatternType),
+	}
+	a := sarama.Acl{
+		Principal:      acl.Principal,
+		Host:           acl.Host,
+		Operation:      aclOperationFromString(acl.Operation),
+		PermissionType: aclPermissionTypeFromString(acl.PermissionType),
+	}
+	err := (*admin).CreateACL(r, a)
+	return Changed, err
 }
 
 func aclExists(admin *sarama.ClusterAdmin, acls *[]sarama.ResourceAcls, acl SingleACL) bool {
