@@ -14,7 +14,7 @@ var SHA256 scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
 // SHA512 contains hash function for SCRAM SHA512
 var SHA512 scram.HashGeneratorFcn = func() hash.Hash { return sha512.New() }
 
-// XDGSCRAMClient
+// XDGSCRAMClient is used for SCRAM authentication
 type XDGSCRAMClient struct {
 	*scram.Client
 	*scram.ClientConversation
@@ -31,7 +31,7 @@ func (x *XDGSCRAMClient) Begin(userName, password, authzID string) (err error) {
 	return nil
 }
 
-// Perform the step of negotiation
+// Step of negotiation
 func (x *XDGSCRAMClient) Step(challenge string) (response string, err error) {
 	response, err = x.ClientConversation.Step(challenge)
 	return
