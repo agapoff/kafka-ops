@@ -16,7 +16,7 @@ import (
 	"text/template"
 )
 
-const version string = "1.0.2"
+const version string = "1.0.3"
 
 var (
 	broker        string
@@ -310,10 +310,10 @@ func applySpecFile() error {
 		broker = spec.Connection.Broker
 	}
 	if spec.Connection.Protocol != "" {
-		protocol = spec.Connection.Protocol
+		protocol = strings.ToLower(spec.Connection.Protocol)
 	}
 	if spec.Connection.Mechanism != "" {
-		mechanism = spec.Connection.Mechanism
+		mechanism = strings.ToLower(spec.Connection.Mechanism)
 	}
 	if spec.Connection.Username != "" {
 		username = spec.Connection.Username
