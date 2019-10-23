@@ -204,7 +204,7 @@ This spec can be then applied:
 Plant=myplant Env=myenv ./kafka-ops --apply --spec kafka-cluster-example3.yaml --template --var Env=realenv --var One=more
 
 TASK [TOPIC : Create topic my-product.myplant.realenv.my-topic (partitions=2, replicas=1)] ****************
-changed: [cy-selenium.quotix.io:9092] 
+changed: [kafka1.cluster.local:9092] 
 
 SUMMARY ********************************************************************************
  ok=0    changed=1    failed=0
