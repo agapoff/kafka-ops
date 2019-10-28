@@ -12,11 +12,12 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"strings"
 	"text/template"
 )
 
-const version string = "1.0.3"
+const version string = "1.0.4"
 
 var (
 	broker        string
@@ -42,9 +43,10 @@ type arrFlags []string
 
 // Spec contains the full structure of the manifest
 type Spec struct {
-	Topics     []Topic    `yaml:"topics" json:"topics"`
-	Acls       []Acl      `yaml:"acls" json:"acls"`
-	Connection Connection `yaml:"connection,omitempty" json:"connection,omitempty"`
+	Topics         []Topic         `yaml:"topics" json:"topics"`
+	Acls           []Acl           `yaml:"acls" json:"acls"`
+	ConsumerGroups []ConsumerGroup `yaml:"consumer-groups,omitempty" json:"consumer-groups,omitempty"`
+	Connection     Connection      `yaml:"connection,omitempty" json:"connection,omitempty"`
 }
 
 // Topic describes single topic
@@ -54,6 +56,16 @@ type Topic struct {
 	ReplicationFactor int               `yaml:"replication_factor" json:"replication_factor"`
 	Configs           map[string]string `yaml:"configs" json:"configs"`
 	State             string            `yaml:"state,omitempty" json:"state,omitempty"`
+	PatternType       string            `yaml:"patternType,omitempty" json:"patternType,omitempty"`
+	Matched           []string          `yaml:"matched,omitempty" json:"matched,omitempty"`
+}
+
+// ConsumerGroup describes a consumer group to be deleted
+type ConsumerGroup struct {
+	Name        string   `yaml:"name" json:"name"`
+	State       string   `yaml:"state,omitempty" json:"state,omitempty"`
+	PatternType string   `yaml:"patternType,omitempty" json:"patternType,omitempty"`
+	Matched     []string `yaml:"matched,omitempty" json:"matched,omitempty"`
 }
 
 // Acl describes single ACL
@@ -351,11 +363,52 @@ func applySpecFile() error {
 
 	// Iterate over topics
 	for _, topic := range spec.Topics {
+
 		if topic.State == "absent" {
-			fmt.Printf("TASK [TOPIC : Delete topic %s] %s\n", topic.Name, strings.Repeat("*", 52))
+			topic.PatternType = strings.ToLower(topic.PatternType)
+			if topic.PatternType == "prefixed" || topic.PatternType == "match" {
+				// Delete topics by pattern
+				fmt.Printf("TASK [TOPIC : Delete topics %s by %s] %s\n", topic.PatternType, topic.Name, strings.Repeat("*", 42))
+				var currentState = Ok
+				var currentError = ""
+				for currentTopicName, _ := range currentTopics {
+					var matched = false
+					if topic.PatternType == "prefixed" {
+						matched = strings.HasPrefix(currentTopicName, topic.Name)
+					} else if topic.PatternType == "match" {
+						matched, _ = regexp.MatchString(topic.Name, currentTopicName)
+					}
+					if matched {
+						topic.Matched = append(topic.Matched, currentTopicName)
+						err := deleteTopic(currentTopicName, admin)
+						if err != nil {
+							numError++
+							currentState = Error
+							currentError = err.Error()
+							if errorStop {
+								printResult(Error, broker, err.Error(), topic)
+								break
+							}
+						} else {
+							numChanged++
+							if currentState != Error {
+								currentState = Changed
+							}
+						}
+					}
+				}
+				printResult(currentState, broker, currentError, topic)
+				if currentState == Ok {
+					numOk++
+				}
+				continue
+			} else {
+				fmt.Printf("TASK [TOPIC : Delete topic %s] %s\n", topic.Name, strings.Repeat("*", 52))
+			}
 		} else {
 			topic.State = "present"
 		}
+
 		currentTopic, found := currentTopics[topic.Name]
 
 		if !found {
@@ -466,65 +519,125 @@ func applySpecFile() error {
 		}
 	}
 
-	// Get current ACLs from broker
-	currentAcls, err := listAllAcls(admin)
-	if err != nil {
-		return err
+	if len(spec.ConsumerGroups) > 0 {
+		// Get current consumer-groups from broker
+		currentGroups, err := (*admin).ListConsumerGroups()
+		if err != nil {
+			return errors.New("Can't list consumer-groups: " + err.Error())
+		}
+
+		// Iterate over consumer-groups
+		for _, group := range spec.ConsumerGroups {
+			if group.State != "absent" {
+				return errors.New("Consumer-groups support only state=absent")
+			}
+			group.PatternType = strings.ToLower(group.PatternType)
+			if group.PatternType != "prefixed" && group.PatternType != "match" {
+				group.PatternType = "literal"
+			}
+
+			// Delete consumer-groups by pattern
+			fmt.Printf("TASK [CONSUMER-GROUP : Delete consumer-group %s by %s] %s\n", group.PatternType, group.Name, strings.Repeat("*", 25))
+			var currentState = Ok
+			var currentError = ""
+			for currentGroupName, _ := range currentGroups {
+				var matched = false
+				if group.PatternType == "prefixed" {
+					matched = strings.HasPrefix(currentGroupName, group.Name)
+				} else if group.PatternType == "match" {
+					matched, _ = regexp.MatchString(group.Name, currentGroupName)
+				} else if currentGroupName == group.Name {
+					matched = true
+				}
+
+				if matched {
+					group.Matched = append(group.Matched, currentGroupName)
+					err := DeleteConsumerGroup(currentGroupName, admin)
+					if err != nil {
+						numError++
+						currentState = Error
+						currentError = err.Error()
+						if errorStop {
+							printResult(Error, broker, err.Error(), group)
+							break
+						}
+					} else {
+						numChanged++
+						if currentState != Error {
+							currentState = Changed
+						}
+					}
+				}
+			}
+			printResult(currentState, broker, currentError, group)
+			if currentState == Ok {
+				numOk++
+			}
+		}
 	}
 
-	// Iterate over ACLs
-	breakLoop := false
-	for _, acl := range spec.Acls {
-		principal := acl.Principal
-		for _, permission := range acl.Permissions {
-			resource := permission.Resource
-			for i, rule := range append(permission.Allow, permission.Deny...) {
-				sacl := SingleACL{
-					Principal: principal,
-					Resource:  resource,
-					Operation: getOperation(rule),
-					Host:      getHost(rule),
-				}
-				if permission.State == "absent" {
-					sacl.State = "absent"
-				} else {
-					sacl.State = "present"
-					// Host can be unset, we'll treat this as * for creating
-					if sacl.Host == "" {
-						sacl.Host = "*"
-					}
-				}
-				if i < len(permission.Allow) {
-					sacl.PermissionType = "ALLOW"
-				} else {
-					sacl.PermissionType = "DENY"
-				}
+	if len(spec.Acls) > 0 {
 
-				result, err := alignAcl(admin, &currentAcls, sacl)
-				if result == Ok {
-					printResult(Ok, broker, "", sacl)
-					numOk++
-				} else if err != nil {
-					printResult(Error, broker, err.Error(), sacl)
-					numError++
-					if errorStop {
-						breakLoop = true
-						break
+		// Get current ACLs from broker
+		currentAcls, err := listAllAcls(admin)
+		if err != nil {
+			return err
+		}
+
+		// Iterate over ACLs
+		breakLoop := false
+		for _, acl := range spec.Acls {
+			principal := acl.Principal
+			for _, permission := range acl.Permissions {
+				resource := permission.Resource
+				for i, rule := range append(permission.Allow, permission.Deny...) {
+					sacl := SingleACL{
+						Principal: principal,
+						Resource:  resource,
+						Operation: getOperation(rule),
+						Host:      getHost(rule),
 					}
-				} else {
-					printResult(result, broker, "", sacl)
-					numChanged++
+					if permission.State == "absent" {
+						sacl.State = "absent"
+					} else {
+						sacl.State = "present"
+						// Host can be unset, we'll treat this as * for creating
+						if sacl.Host == "" {
+							sacl.Host = "*"
+						}
+					}
+					if i < len(permission.Allow) {
+						sacl.PermissionType = "ALLOW"
+					} else {
+						sacl.PermissionType = "DENY"
+					}
+
+					result, err := alignAcl(admin, &currentAcls, sacl)
+					if result == Ok {
+						printResult(Ok, broker, "", sacl)
+						numOk++
+					} else if err != nil {
+						printResult(Error, broker, err.Error(), sacl)
+						numError++
+						if errorStop {
+							breakLoop = true
+							break
+						}
+					} else {
+						printResult(result, broker, "", sacl)
+						numChanged++
+					}
+				}
+				if breakLoop {
+					break
 				}
 			}
 			if breakLoop {
 				break
 			}
-		}
-		if breakLoop {
-			break
+
 		}
 	}
-
 	printSummary(broker, numOk, numChanged, numError)
 	if numError > 0 {
 		return errors.New("")
@@ -701,6 +814,11 @@ func createTopic(topic Topic, admin *sarama.ClusterAdmin) error {
 
 func deleteTopic(topic string, admin *sarama.ClusterAdmin) error {
 	err := (*admin).DeleteTopic(topic)
+	return err
+}
+
+func DeleteConsumerGroup(group string, admin *sarama.ClusterAdmin) error {
+	err := (*admin).DeleteConsumerGroup(group)
 	return err
 }
 

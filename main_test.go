@@ -262,6 +262,49 @@ func TestApplySpecFileDeleteAcl(t *testing.T) {
 	}
 }
 
+func TestApplySpecFileDeleteByPattern(t *testing.T) {
+	seedBroker := sarama.NewMockBroker(t, 2)
+	defer seedBroker.Close()
+
+	group := "my_group"
+
+	seedBroker.SetHandlerByMap(map[string]sarama.MockResponse{
+		"MetadataRequest": sarama.NewMockMetadataResponse(t).
+			SetController(seedBroker.BrokerID()).
+			SetBroker(seedBroker.Addr(), seedBroker.BrokerID()).
+			SetLeader("my_topic1", 0, seedBroker.BrokerID()),
+		"DescribeConfigsRequest": sarama.NewMockDescribeConfigsResponse(t),
+		"DeleteTopicsRequest":    sarama.NewMockDeleteTopicsResponse(t),
+		"DeleteGroupsRequest":    sarama.NewMockDeleteGroupsRequest(t).SetDeletedGroups([]string{group}),
+		"ListGroupsRequest":      sarama.NewMockListGroupsResponse(t).AddGroup(group, "consumer"),
+		"FindCoordinatorRequest": sarama.NewMockFindCoordinatorResponse(t).SetCoordinator(sarama.CoordinatorGroup, group, seedBroker),
+	})
+
+	protocol = "plaintext"
+	broker = seedBroker.Addr()
+	specfile = "testdata/apply_spec_delete_by_pattern.yaml"
+	verbose = true
+	out, err := captureOutput(func() error { return applySpecFile() })
+
+	if err != nil {
+		t.Fatal("Failed to apply spec: " + err.Error())
+	}
+
+	expected := [5]string{
+		Ok + " ok=1   " + Default + Changed + " changed=5   " + Default + " failed=0\n" + Default,
+		"\"matched\": [\n        \"my_topic1\"",
+		"TASK [TOPIC : Delete topics prefixed by my_]",
+		"TASK [CONSUMER-GROUP : Delete consumer-group match by grou[a-z]]",
+		"\"matched\": [\n        \"my_group\"",
+	}
+
+	for _, str := range expected {
+		if !strings.Contains(out, str) {
+			t.Fatalf("Output does not contain expected \"%s\":\n%s", str, out)
+		}
+	}
+}
+
 func TestGetHost(t *testing.T) {
 	host := getHost("test:*")
 

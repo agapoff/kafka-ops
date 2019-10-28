@@ -1,0 +1,7 @@
+---
+topics:
+- name: my_topic
+  partitions: 2
+  configs:
+    cleanup.policy: compact
+    retention.ms: '1000'

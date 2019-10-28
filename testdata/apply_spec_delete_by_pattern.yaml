@@ -1,0 +1,21 @@
+---
+topics:
+- name: my_
+  state: absent
+  patternType: PREFIXED
+- name: topic[1-2]
+  state: absent
+  patternType: MATCH
+
+consumer-groups:
+- name: my_
+  state: absent
+  patternType: PREFIXED
+- name: grou[a-z]
+  state: absent
+  patternType: MATCH
+- name: notpresent
+  state: absent
+  patternType: match
+- name: my_group
+  state: absent

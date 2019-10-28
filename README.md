@@ -221,6 +221,51 @@ name: my-product.{{ if .Plant }}{{ .Plant }}{{ else }}default{{ end }}.{{ .Env }
 But Kafka-Ops fails if some unresolved template key is encountered. In order to override this behaviour use flag *--missingok*.
 
 
+## How to delete multiple topics and consumer groups by pattern
+
+Kafka-Ops supports deleting the topics and consumer groups by patterns. Please refer to the Spec-file example showing how to achieve the goal:
+
+kafka-cluster-example4.yaml
+```yaml
+---
+topics:
+- name: my_
+  state: absent
+  patternType: PREFIXED
+- name: topic[1-2]
+  state: absent
+  patternType: MATCH
+
+consumer-groups:
+- name: my_
+  state: absent
+  patternType: PREFIXED
+- name: grou[a-z]
+  state: absent
+  patternType: MATCH
+- name: some.group
+  state: absent
+```
+
+Two pattern types are supported: *PREFIXED* (the object name must start with the string) and *MATCH* (the object name must match the defined regex). The third option is *LITERAL* which is default. Kafka-Ops looks through the list of topics and/or consumer groups and deletes the matched ones.
+
+
+## Defining broker connection settings via Spec-file
+
+Kafka-Ops can read broker connection settings right from the Spec-file. This can be useful when the Spec is being templated by some third-party tool (e.g. by Helm). The settings can be defined as follows:
+
+kafka-cluster-example5.yaml
+```yaml
+---
+connection:
+  broker: kafka1.example.local:9093,kafka2.example.local:9093
+  protocol: SASL_SSL
+  mechanism: SCRAM-SHA-256
+  username: admin
+  password: admin-secret
+```
+
+
 ## Full Usage
 
 ```

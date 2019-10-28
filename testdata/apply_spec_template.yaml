@@ -1,0 +1,13 @@
+---
+connection:
+  broker: {{ .Broker }}
+  protocol: PLAINTEXT
+
+topics:
+- name: {{ if .Topic }}{{ .Topic }}{{else}}default{{end}}_topic
+  configs:
+    cleanup.policy: compact
+    min.insync.replicas: '1'
+  partitions: 2
+  replication_factor: 1
+  state: absent

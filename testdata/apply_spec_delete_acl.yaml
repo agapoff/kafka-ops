@@ -1,0 +1,8 @@
+---
+acls:
+  - principal: 'User:test'
+    permissions:
+    - resource:
+        type: 'cluster'
+      allow_operations: ['IDEMPOTENT_WRITE:*']
+      state: absent
