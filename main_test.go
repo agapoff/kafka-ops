@@ -1,10 +1,9 @@
 package main
 
 import (
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 
 	"testing"
-	//"fmt"
 	"bytes"
 	"io"
 	"io/ioutil"

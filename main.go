@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 
 	"bytes"
 	"crypto/tls"
@@ -17,7 +17,7 @@ import (
 	"text/template"
 )
 
-const version string = "1.0.4"
+const version string = "1.0.5"
 
 var (
 	broker        string
