@@ -4,16 +4,24 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/cloudworkz/kafka-minion)](https://goreportcard.com/report/github.com/agapoff/kafka-ops)
 ![GitHub release](https://img.shields.io/github/release/agapoff/kafka-ops.svg)
 
-Yet another CLI utility to automate Kafka cluster management
+**Kafka-Ops** is a powerful CLI tool written in Go for automating Apache Kafka cluster management. It allows you to declaratively manage Kafka topics and ACLs using JSON or YAML spec files, applying changes idempotently through the Kafka AdminClient API.
 
-**Kafka-Ops** is a command-line utility written in Go and mostly inspired by [KafkaSpecs](https://github.com/streamthoughts/kafka-specs) java tool. It allows to automate Kafka management by describing resources (topics, ACLs) and their configs in spec-files and applying them to Kafka cluster. Kafka-Ops uses AdminClient Kafka API to align cluster resources with the spec idempotently. The spec can be manifested either in YAML or JSON format.
+Inspired by [KafkaSpecs](https://github.com/streamthoughts/kafka-specs), Kafka-Ops provides a clean and scriptable way to describe, version, and apply Kafka resource configurations.
 
+## Features
+
+- Manage Kafka topics and ACLs via spec files
+- Supports JSON and YAML formats
+- Idempotent apply logic via AdminClient API
+- Pattern matching and ACL operations
+- CLI templating using Go templates
+- Support for SASL, SCRAM, and TLS-secured clusters
 
 ## Requirements
 
 * Kafka 2.0+
 
-## Spec Files Examples
+## Example Spec Files
 
 Both YAML and JSON formats of spec files have the same notation and can be converted from each other. This is the example for YAML format:
 
@@ -171,7 +179,7 @@ export KAFKA_PASSWORD=admin-secret
 ./kafka-ops --apply --protocol sasl_ssl --json --verbose --stop-on-error
 ```
 
-## How to Dump the Current Cluster Config
+## Dumping Kafka Resources
 
 Kafka-Ops can also export the current topics and ACLs from the cluster. This can be useful for editing the spec and applyting back or for migrating the spec to another cluster.
 
@@ -221,7 +229,7 @@ name: my-product.{{ if .Plant }}{{ .Plant }}{{ else }}default{{ end }}.{{ .Env }
 But Kafka-Ops fails if some unresolved template key is encountered. In order to override this behaviour use flag *--missingok*.
 
 
-## How to delete multiple topics and consumer groups by pattern
+## Pattern-Based Deletion
 
 Kafka-Ops supports deleting the topics and consumer groups by patterns. Please refer to the Spec-file example showing how to achieve the goal:
 
@@ -310,9 +318,9 @@ Usage: ./kafka-ops <action> [<options>] [<broker connection options>]
                      Can be also set by Env variable KAFKA_PASSWORD
 ```
 
-## How to build the binary
+## Building
 
-You need golang and GNU make to be installed.
+Make sure you have `Go` and `make`:
 
 ```bash
 make test && make build
@@ -326,4 +334,4 @@ make rpm
 
 ## Contributing
 
-This is an open source project so feel free to contribute.
+Contributions are welcome! Feel free to open issues or submit PRs.
